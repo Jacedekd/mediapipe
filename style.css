@@ -1,0 +1,65 @@
+/* style.css */
+body {
+    font-family: sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 20px;
+}
+
+.mp-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.mp-video-wrap {
+    position: relative;
+    width: 640px;
+    height: 480px;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+/* Видео скрываем (оно нужно только для анализа), показываем Canvas */
+#input_video {
+    display: none; 
+}
+
+#output_canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#dressOverlay {
+    position: absolute;
+    /* Платье изначально скрыто */
+    display: none; 
+    pointer-events: none;
+    z-index: 10;
+    /* Точка трансформации - верх центра, чтобы вешалось на плечи */
+    transform-origin: top center;
+}
+
+.mp-info {
+    margin-top: 15px;
+    text-align: center;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    cursor: pointer;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin: 0 5px;
+}
+
+button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
