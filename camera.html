@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MediaPipe Try — TryOn Test</title>
+  
+  <link rel="stylesheet" href="MediaPipeTry.css" /> 
+</head>
+<body>
+  <h2 style="text-align:center;">MediaPipe Pose — Try-on test</h2>
+  
+  <div class="mp-root">
+    <div class="mp-video-wrap">
+      <video id="input_video" autoplay playsinline muted></video>
+      <canvas id="output_canvas"></canvas>
+      
+      <img id="dressOverlay" src="assets/dress1.png" alt="dress" />
+    </div>
+    <div class="mp-info">
+      <button id="startBtn">Запустить камеру</button>
+      <button id="stopBtn">Остановить</button>
+      <p id="status">Status: stopped</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.10.14/pose.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.10.14/camera_utils.js"></script>
+  
+  <script src="MediaPipeTry.js"></script>
+</body>
+</html>
