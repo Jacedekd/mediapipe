@@ -10,16 +10,17 @@ const statusEl = document.getElementById("status");
 let camera = null;
 let pose = null;
 
-// === ЗАГРУЗКА КАРТИНКИ ПЛАТЬЯ ===
+// === ЗАГРУЗКА КАРТИНКИ ===
 const dressImage = new Image();
-// Укажите точный путь к вашей картинке (без фона!)
+// Убедитесь, что имя файла верное и КАРТИНКА БЕЗ ФОНА!
 dressImage.src = "assets/dress1.png"; 
 
 // === НАСТРОЙКИ (ПОДГОНКА) ===
+// Меняйте эти цифры, чтобы платье село идеально
 const CONFIG = {
-    scale: 2.8,       // Ширина платья (чем больше, тем шире)
-    offsetY: 0,    // Сдвиг вверх-вниз (попробуйте 0, -50, 50)
-    rotationFix: 0    // Если платье нужно повернуть (в градусах)
+    scale: 3.0,       // Ширина платья (больше = шире)
+    offsetY: -10,     // Сдвиг вверх/вниз в пикселях (минус = выше)
+    rotationFix: 0    // Если платье нужно чуть довернуть (в градусах)
 };
 
 function updateStatus(text) {
@@ -44,68 +45,71 @@ function setupPose() {
 function onResults(results) {
     if (!results.poseLandmarks) return;
 
-    // 1. Настраиваем размеры
+    // 1. Подгоняем размер холста
     canvasElement.width = videoElement.videoWidth;
     canvasElement.height = videoElement.videoHeight;
 
-    // 2. Очищаем холст
+    // 2. РИСУЕМ ВИДЕО (ЗЕРКАЛЬНО)
     canvasCtx.save();
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-    // 3. Зеркалим всё пространство (и видео, и платье сразу!)
     canvasCtx.translate(canvasElement.width, 0);
-    canvasCtx.scale(-1, 1);
-
-    // 4. Рисуем видеопоток
+    canvasCtx.scale(-1, 1); // Отражаем по горизонтали
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    canvasCtx.restore(); // <--- ВАЖНО: Возвращаем кисть в нормальное состояние!
+    
+    // С этого момента мы рисуем в ОБЫЧНОМ мире (не зеркальном).
+    // Платье теперь точно будет головой вверх.
 
-    // 5. Рисуем платье
     const landmarks = results.poseLandmarks;
     const L_SH = landmarks[11]; // Левое плечо
     const R_SH = landmarks[12]; // Правое плечо
 
     if (L_SH && R_SH && L_SH.visibility > 0.5 && R_SH.visibility > 0.5) {
-        // Координаты (MediaPipe дает от 0 до 1, умножаем на ширину)
-        const lx = L_SH.x * canvasElement.width;
-        const ly = L_SH.y * canvasElement.height;
-        const rx = R_SH.x * canvasElement.width;
-        const ry = R_SH.y * canvasElement.height;
+        
+        // 3. ПЕРЕСЧИТЫВАЕМ КООРДИНАТЫ ПОД ЗЕРКАЛЬНОЕ ВИДЕО
+        // MediaPipe дает x от 0 (слева) до 1 (справа).
+        // Так как мы видео отзеркалили, нам нужно инвертировать X: (1 - x)
+        
+        const leftX = (1 - L_SH.x) * canvasElement.width;
+        const leftY = L_SH.y * canvasElement.height;
+        
+        const rightX = (1 - R_SH.x) * canvasElement.width;
+        const rightY = R_SH.y * canvasElement.height;
 
         // Центр между плечами
-        const centerX = (lx + rx) / 2;
-        const centerY = (ly + ry) / 2;
+        const centerX = (leftX + rightX) / 2;
+        const centerY = (leftY + rightY) / 2;
 
-        // Ширина и угол
-        const dx = rx - lx;
-        const dy = ry - ly;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-        const angle = Math.atan2(dy, dx); // Угол наклона плеч
+        // Вычисляем размеры и угол
+        const dx = rightX - leftX;
+        const dy = rightY - leftY;
+        
+        // Расстояние между плечами
+        const shoulderDist = Math.sqrt(dx*dx + dy*dy);
+        
+        // Угол наклона
+        const angle = Math.atan2(dy, dx);
 
-        // Размеры платья
-        const imgW = distance * CONFIG.scale;
-        // Сохраняем пропорции картинки
-        const aspectRatio = dressImage.height / dressImage.width; 
+        // Размеры картинки
+        const imgW = shoulderDist * CONFIG.scale;
+        const aspectRatio = dressImage.height / dressImage.width;
         const imgH = imgW * aspectRatio;
 
-        // Рисование с поворотом
-        canvasCtx.save(); // Сохраняем текущее состояние
+        // 4. РИСУЕМ ПЛАТЬЕ
+        canvasCtx.save();
         
-        // Переносим кисть в центр между плечами
+        // Переносим точку рисования в центр между плечами + сдвиг (offsetY)
         canvasCtx.translate(centerX, centerY + CONFIG.offsetY);
         
-        // Поворачиваем кисть на угол плеч (+ корректировка, если есть)
-        // ВАЖНО: Угол берем отрицательный или положительный в зависимости от зеркальности
-        // В данном контексте angle работает корректно, так как весь Context отзеркален
+        // Поворачиваем на угол плеч
         canvasCtx.rotate(angle);
 
-        // Рисуем картинку (сдвигаем на половину ширины/высоты влево-вверх, чтобы центр был в точке)
-        canvasCtx.drawImage(dressImage, -imgW / 2, -imgH / 5, imgW, imgH); 
-        // Примечание: -imgH / 5 — это "точка вешалки". Если платье висит слишком низко, меняйте этот делитель (например на / 2)
-
-        canvasCtx.restore(); // Возвращаем кисть назад
+        // Рисуем картинку. 
+        // Смещаем на половину ширины влево (-imgW/2), чтобы центр был ровно посередине.
+        // Смещаем немного вверх (-imgH/5), чтобы "вешалка" была на уровне плеч.
+        canvasCtx.drawImage(dressImage, -imgW / 2, -imgH / 5, imgW, imgH);
+        
+        canvasCtx.restore();
     }
-
-    canvasCtx.restore(); // Завершаем зеркальный режим
 }
 
 function startCamera() {
@@ -122,4 +126,13 @@ function startCamera() {
 }
 
 startBtn.addEventListener("click", startCamera);
-// Остальной код для остановки такой же...
+stopBtn.addEventListener("click", () => {
+    if (camera) {
+         videoElement.srcObject.getTracks().forEach(t => t.stop());
+         videoElement.srcObject = null;
+    }
+    updateStatus("Остановлено");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    canvasCtx.clearRect(0,0, canvasElement.width, canvasElement.height);
+});
