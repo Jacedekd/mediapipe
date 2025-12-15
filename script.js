@@ -13,7 +13,7 @@ let pose = null;
 // === ЗАГРУЗКА КАРТИНКИ ===
 const dressImage = new Image();
 // Убедитесь, что имя файла верное и КАРТИНКА БЕЗ ФОНА!
-dressImage.src = "assets/dress1.png"; 
+dressImage.src = "assets/dress.png"; 
 
 // === НАСТРОЙКИ (ПОДГОНКА) ===
 // Меняйте эти цифры, чтобы платье село идеально
