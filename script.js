@@ -12,15 +12,22 @@ let pose = null;
 
 // === ЗАГРУЗКА КАРТИНКИ ===
 const dressImage = new Image();
-// Убедитесь, что имя файла верное и КАРТИНКА БЕЗ ФОНА!
-dressImage.src = "assets/dress.png"; 
+dressImage.src = "assets/dress1.png"; // Убедитесь, что путь верный
 
-// === НАСТРОЙКИ (ПОДГОНКА) ===
-// Меняйте эти цифры, чтобы платье село идеально
+// === ГЛАВНЫЕ НАСТРОЙКИ (КРУТИТЕ ЗДЕСЬ) ===
 const CONFIG = {
-    scale: 3.0,       // Ширина платья (больше = шире)
-    offsetY: -10,     // Сдвиг вверх/вниз в пикселях (минус = выше)
-    rotationFix: 0    // Если платье нужно чуть довернуть (в градусах)
+    // 1. ШИРИНА: Увеличивайте, если платье узкое.
+    // Попробуйте значения: 3.5, 4.0, 4.5
+    scale: 4.2,       
+
+    // 2. ПОСАДКА ПО ВЫСОТЕ (Y): 
+    // 0 = центр платья на уровне плеч (высоко).
+    // 0.4 = платье сдвигается вниз на 40% своей высоты (нормально).
+    // Попробуйте: 0.3, 0.4, 0.5
+    offsetYFactor: 0.45,     
+    
+    // 3. ПОВОРОТ: Если картинка платья изначально кривая
+    rotationOffset: 0    
 };
 
 function updateStatus(text) {
@@ -45,68 +52,70 @@ function setupPose() {
 function onResults(results) {
     if (!results.poseLandmarks) return;
 
-    // 1. Подгоняем размер холста
+    // Настраиваем размер
     canvasElement.width = videoElement.videoWidth;
     canvasElement.height = videoElement.videoHeight;
 
-    // 2. РИСУЕМ ВИДЕО (ЗЕРКАЛЬНО)
+    // 1. Рисуем ВИДЕО (зеркально)
     canvasCtx.save();
     canvasCtx.translate(canvasElement.width, 0);
-    canvasCtx.scale(-1, 1); // Отражаем по горизонтали
+    canvasCtx.scale(-1, 1);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-    canvasCtx.restore(); // <--- ВАЖНО: Возвращаем кисть в нормальное состояние!
-    
-    // С этого момента мы рисуем в ОБЫЧНОМ мире (не зеркальном).
-    // Платье теперь точно будет головой вверх.
+    canvasCtx.restore(); 
 
     const landmarks = results.poseLandmarks;
     const L_SH = landmarks[11]; // Левое плечо
     const R_SH = landmarks[12]; // Правое плечо
 
+    // Рисуем платье, только если плечи видны
     if (L_SH && R_SH && L_SH.visibility > 0.5 && R_SH.visibility > 0.5) {
         
-        // 3. ПЕРЕСЧИТЫВАЕМ КООРДИНАТЫ ПОД ЗЕРКАЛЬНОЕ ВИДЕО
-        // MediaPipe дает x от 0 (слева) до 1 (справа).
-        // Так как мы видео отзеркалили, нам нужно инвертировать X: (1 - x)
+        // --- МАТЕМАТИКА КООРДИНАТ ---
         
+        // Инвертируем X, так как мы смотрим на зеркальное видео
         const leftX = (1 - L_SH.x) * canvasElement.width;
         const leftY = L_SH.y * canvasElement.height;
-        
         const rightX = (1 - R_SH.x) * canvasElement.width;
         const rightY = R_SH.y * canvasElement.height;
 
-        // Центр между плечами
+        // Центр между плечами (точка на шее)
         const centerX = (leftX + rightX) / 2;
         const centerY = (leftY + rightY) / 2;
 
-        // Вычисляем размеры и угол
+        // Реальная ширина плеч в пикселях
         const dx = rightX - leftX;
         const dy = rightY - leftY;
-        
-        // Расстояние между плечами
         const shoulderDist = Math.sqrt(dx*dx + dy*dy);
         
-        // Угол наклона
+        // Угол наклона тела
         const angle = Math.atan2(dy, dx);
 
-        // Размеры картинки
+        // --- РАСЧЕТ РАЗМЕРОВ ПЛАТЬЯ ---
+        
+        // Ширина платья зависит от ширины плеч * масштаб
         const imgW = shoulderDist * CONFIG.scale;
+        
+        // Высоту считаем пропорционально, чтобы картинка не сплющилась
         const aspectRatio = dressImage.height / dressImage.width;
         const imgH = imgW * aspectRatio;
 
-        // 4. РИСУЕМ ПЛАТЬЕ
+        // --- ОТРИСОВКА ---
         canvasCtx.save();
         
-        // Переносим точку рисования в центр между плечами + сдвиг (offsetY)
-        canvasCtx.translate(centerX, centerY + CONFIG.offsetY);
+        // Переносим кисть в точку шеи
+        canvasCtx.translate(centerX, centerY);
         
-        // Поворачиваем на угол плеч
+        // Поворачиваем вместе с телом
         canvasCtx.rotate(angle);
 
-        // Рисуем картинку. 
-        // Смещаем на половину ширины влево (-imgW/2), чтобы центр был ровно посередине.
-        // Смещаем немного вверх (-imgH/5), чтобы "вешалка" была на уровне плеч.
-        canvasCtx.drawImage(dressImage, -imgW / 2, -imgH / 5, imgW, imgH);
+        // Сдвигаем платье ВНИЗ по его собственной оси
+        // (imgH * CONFIG.offsetYFactor) отвечает за спуск платья с шеи на грудь
+        const yShift = imgH * CONFIG.offsetYFactor;
+
+        // Рисуем! 
+        // -imgW / 2 -> центрируем по горизонтали
+        // -imgH / 2 + yShift -> центрируем по вертикали и сдвигаем вниз
+        canvasCtx.drawImage(dressImage, -imgW / 2, -imgH / 2 + yShift, imgW, imgH);
         
         canvasCtx.restore();
     }
