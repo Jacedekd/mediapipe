@@ -11,17 +11,30 @@ const dressImg = document.getElementById("dressOverlay");
 let camera = null;
 let pose = null;
 
+// === НАСТРОЙКИ (МОЖНО МЕНЯТЬ) ===
+const CONFIG = {
+    // Насколько широким должно быть платье относительно плеч
+    // 2.0 - ровно по плечам, 3.0 - оверсайз. Попробуйте 2.5 или 2.8
+    scale: 2.8, 
+
+    // Сдвиг вверх/вниз. 
+    // -0.5 поднимет платье выше к ушам.
+    // 0.2 опустит платье ниже.
+    offsetY: -0.2, 
+
+    // Дополнительный поворот (в градусах), если платье кривое на картинке
+    rotationOffset: 0 
+};
+// =================================
+
 function updateStatus(text) {
     if (statusEl) statusEl.innerText = "Статус: " + text;
     console.log("[Status]", text);
 }
 
-// 1. Настройка нейросети
 function setupPose() {
-    // Используем глобальную переменную Pose, которая загрузилась из CDN
     pose = new Pose({
         locateFile: (file) => {
-            // Очень важно: указываем путь к файлам модели (.tflite, .binarypb)
             return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
         }
     });
@@ -37,66 +50,61 @@ function setupPose() {
     pose.onResults(onResults);
 }
 
-// 2. Обработка каждого кадра
 function onResults(results) {
     if (!results.poseLandmarks) return;
 
-    // Подгоняем размер канваса под видео
     canvasElement.width = videoElement.videoWidth;
     canvasElement.height = videoElement.videoHeight;
 
     canvasCtx.save();
     canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
     
-    // Отрисовка видео (зеркально, как в зеркале)
+    // Отрисовка видео (зеркально)
     canvasCtx.translate(canvasElement.width, 0);
     canvasCtx.scale(-1, 1);
     canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
     
-    // Рисуем ключевые точки (для отладки можно раскомментировать)
-    // drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 2});
-    // drawLandmarks(canvasCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 1});
-
-    // --- Логика наложения платья ---
     const landmarks = results.poseLandmarks;
-    
-    // Индексы точек: 11-левое плечо, 12-правое плечо, 23-левое бедро, 24-правое бедро
-    const L_SH = landmarks[11];
-    const R_SH = landmarks[12];
-    const L_H = landmarks[23];
-    const R_H = landmarks[24];
+    const L_SH = landmarks[11]; // Левое плечо
+    const R_SH = landmarks[12]; // Правое плечо
 
-    if (L_SH && R_SH && L_H && R_H) {
-        // Вычисляем координаты (MediaPipe дает от 0.0 до 1.0, умножаем на ширину)
-        const leftShoulderX = L_SH.x * canvasElement.width;
-        const rightShoulderX = R_SH.x * canvasElement.width;
+    // Рисуем платье, только если плечи хорошо видны
+    if (L_SH && R_SH && L_SH.visibility > 0.6 && R_SH.visibility > 0.6) {
         
-        // Ширина плеч
-        const shoulderWidth = Math.abs(leftShoulderX - rightShoulderX);
-        
+        // Координаты (конвертируем из % в пиксели)
+        const leftX = L_SH.x * canvasElement.width;
+        const rightX = R_SH.x * canvasElement.width;
+        const leftY = L_SH.y * canvasElement.height;
+        const rightY = R_SH.y * canvasElement.height;
+
         // Центр между плечами
-        const centerX = (leftShoulderX + rightShoulderX) / 2;
-        const centerY = (L_SH.y * canvasElement.height + R_SH.y * canvasElement.height) / 2;
+        const centerX = (leftX + rightX) / 2;
+        const centerY = (leftY + rightY) / 2;
 
-        // Расчет размеров платья
-        // widthPx делаем чуть шире плеч (умножаем на 3, подбирается экспериментально под картинку)
-        const widthPx = shoulderWidth * 2.8; 
+        // Ширина плеч
+        const dist = Math.sqrt(Math.pow(rightX - leftX, 2) + Math.pow(rightY - leftY, 2));
+
+        // Применяем настройки
+        const dressWidth = dist * CONFIG.scale;
         
-        // Показываем и двигаем картинку
         dressImg.style.display = "block";
-        dressImg.style.width = `${widthPx}px`;
-        // Поскольку видео отзеркалено в Canvas, но координаты HTML элементов обычные,
-        // нам нужно "раззеркалить" координату X для картинки
+        dressImg.style.width = `${dressWidth}px`;
+        
+        // Позиция
+        // Инвертируем X (canvasWidth - centerX), так как видео отзеркалено
         dressImg.style.left = `${canvasElement.width - centerX}px`; 
-        dressImg.style.top = `${centerY}px`;
+        dressImg.style.top = `${centerY + (dist * CONFIG.offsetY)}px`;
+
+        // Угол поворота (чтобы платье наклонялось вместе с телом)
+        const angle = Math.atan2(rightY - leftY, rightX - leftX);
+        // Конвертируем offset из градусов в радианы
+        const rotationFix = CONFIG.rotationOffset * (Math.PI / 180);
         
-        // Простой поворот (угол между плечами)
-        const dx = R_SH.x - L_SH.x;
-        const dy = R_SH.y - L_SH.y;
-        // Из-за зеркалирования угол инвертируем
-        const angle = -Math.atan2(dy, dx); 
-        
-        dressImg.style.transform = `translate(-50%, -15%) rotate(${angle}rad) scaleX(-1)`;
+        // Трансформация:
+        // 1. scaleX(-1) — зеркалим картинку (если нужно)
+        // 2. rotate(-angle) — поворот против часовой, т.к. видео отзеркалено
+        dressImg.style.transform = `translate(-50%, -15%) rotate(${-angle + rotationFix}rad)`; 
+
     } else {
         dressImg.style.display = "none";
     }
@@ -104,7 +112,6 @@ function onResults(results) {
     canvasCtx.restore();
 }
 
-// 3. Запуск камеры
 function startCamera() {
     if (!pose) setupPose();
 
@@ -116,7 +123,7 @@ function startCamera() {
         height: 720
     });
     
-    camera = cameraUtils; // Сохраняем в глобальную переменную
+    camera = cameraUtils;
     
     camera.start()
         .then(() => {
@@ -132,7 +139,6 @@ function startCamera() {
 
 function stopCamera() {
     if (camera) {
-        // У класса Camera нет метода stop() в старых версиях, но можно остановить поток видео
         const stream = videoElement.srcObject;
         if (stream) {
             const tracks = stream.getTracks();
@@ -144,12 +150,9 @@ function stopCamera() {
     startBtn.disabled = false;
     stopBtn.disabled = true;
     dressImg.style.display = "none";
-    canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 }
 
-// Привязка кнопок
 startBtn.addEventListener("click", startCamera);
 stopBtn.addEventListener("click", stopCamera);
 
-// Инициализация
 updateStatus("Готов к запуску");
